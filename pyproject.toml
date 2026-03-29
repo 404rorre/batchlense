@@ -12,6 +12,13 @@ dependencies = [
     "numpy>=1.24",
     "pandas>=2.0",
     "torch>=2.0",
+    "scikit-learn>=1.3.0",
+    "scipy>=1.11.0",
+    "streamlit>=1.30",
+    "plotly>=5.18",
+    "umap-learn>=0.5",
+    "fpdf2>=2.7",
+    "kaleido>=0.2",
 ]
 
 [project.optional-dependencies]
@@ -19,7 +26,6 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.8.0",
     "mypy>=1.8.0",
-    "scikit-learn>=1.3.0",
 ]
 
 [project.scripts]
@@ -40,6 +46,9 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/frontend/**" = ["E501"]
+
 [tool.ruff.format]
 quote-style = "double"
 
@@ -48,7 +57,7 @@ python_version = "3.11"
 strict = true
 explicit_package_bases = true
 mypy_path = "src"
-files = ["src/backend"]
+files = ["src/backend", "src/frontend"]
 
 [[tool.mypy.overrides]]
 module = "torch"
@@ -65,3 +74,67 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "pandas.*"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "streamlit"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "streamlit.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "plotly"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "plotly.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "umap"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "fpdf"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "kaleido"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "scipy"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "scipy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sklearn"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "sklearn.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "frontend"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "frontend.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "frontend.components.feature_histogram"
+disable_error_code = ["import-untyped"]
+
+[[tool.mypy.overrides]]
+module = "frontend.components.dim_reduction"
+disable_error_code = ["import-untyped"]
+
+[[tool.mypy.overrides]]
+module = "frontend.components.correlation_heatmap"
+disable_error_code = ["import-untyped"]
