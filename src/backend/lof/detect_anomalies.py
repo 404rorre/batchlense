@@ -68,14 +68,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "-r",
-        "--reference",
+        "--reference_batches",
         type=Path,
         required=True,
         help="CSV of normal / clean data for threshold calibration",
     )
     p.add_argument(
         "-i",
-        "--input",
+        "--input_batches",
         type=Path,
         required=True,
         help="CSV to score for outliers",
@@ -128,8 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         run_lof_pipeline(
-            reference_path=args.reference,
-            input_path=args.input,
+            reference_path=args.reference_batches,
+            input_path=args.input_batches,
             output_path=args.output,
             n_neighbors=args.n_neighbors,
             normalization=cast(Normalization, args.normalization),
