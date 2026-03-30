@@ -1,0 +1,4 @@
+# Bind loopback IPv4 only (avoids [::]:8501 / all-interfaces with "localhost" on Linux).
+# Override for LAN: batchlense --host 0.0.0.0  OR  streamlit run ... --server.address 0.0.0.0
+[server]
+address = "127.0.0.1"
