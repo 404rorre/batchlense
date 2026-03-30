@@ -49,8 +49,7 @@ def run_lof_on_dataframe(
         f = frame
         if f.isna().any().any():
             raise ValueError(
-                f"NaN values in {name} feature columns; "
-                "drop or impute first.",
+                f"NaN values in {name} feature columns; drop or impute first.",
             )
 
     n_ref = len(ref)
