@@ -54,7 +54,7 @@ def render_upload_tab() -> None:
     st.session_state["spec_bytes"] = spec.getvalue() if spec else None
 
     st.subheader("Preview")
-    st.dataframe(df.head(10), use_container_width=True)
+    st.dataframe(df.head(10), width="stretch")
 
     nan_count = df.isna().sum().sum()
     if nan_count:
