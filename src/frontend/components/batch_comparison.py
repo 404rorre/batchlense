@@ -25,13 +25,14 @@ def comparison_table(
         m = float(med[c])
         delta = v - m
         pct = 100.0 * delta / m if m != 0 else (np.inf if delta != 0 else 0.0)
+        pct_r = round(float(pct), 2) if np.isfinite(pct) else np.nan
         rows.append(
             {
                 "feature": c,
-                "batch": v,
-                "median_all": m,
-                "delta": delta,
-                "delta_pct": pct if np.isfinite(pct) else np.nan,
+                "batch": round(v, 2),
+                "median_all": round(m, 2),
+                "delta": round(delta, 2),
+                "delta_pct": pct_r,
             },
         )
     return pd.DataFrame(rows)
@@ -50,7 +51,7 @@ def make_delta_bar_figure(
             y=c["feature"],
             orientation="h",
             marker_color=np.where(c["delta_pct"] >= 0, "#FF8C00", "rgb(100,149,237)"),
-            text=[f"{v:+.1f}%" for v in c["delta_pct"]],
+            text=[f"{v:+.2f}%" for v in c["delta_pct"]],
             textposition="outside",
         ),
     )

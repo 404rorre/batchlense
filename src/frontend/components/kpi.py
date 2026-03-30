@@ -50,6 +50,23 @@ def basic_kpis(
     }
 
 
+def auto_spec_limits(df: pd.DataFrame, feature_cols: list[str]) -> pd.DataFrame:
+    """Derive USL/LSL as mean +/- 3*sigma per feature (6-sigma style)."""
+    rows: list[dict[str, Any]] = []
+    for c in feature_cols:
+        x = df[c].astype(float)
+        m = float(x.mean())
+        s = float(x.std(ddof=1)) if len(x) > 1 else 0.0
+        rows.append(
+            {
+                "feature": c,
+                "usl": round(m + 3 * s, 4),
+                "lsl": round(m - 3 * s, 4),
+            },
+        )
+    return pd.DataFrame(rows)
+
+
 def compute_capability(
     df: pd.DataFrame,
     feature_cols: list[str],
