@@ -4,7 +4,7 @@
 
 Batchlense is a small quality-analytics app for manufacturing and process teams: upload batch-level CSVs, score every row with **Local Outlier Factor (LOF)** against a reference baseline, and explore results with control-style charts, **Pp/Ppk**, 2D projections (PCA / t-SNE / UMAP), and PDF export.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://batchlense.streamlit.app)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://batchlense.streamlit.app/)
 
 > Replace the demo URL above after you deploy your own fork.
 
