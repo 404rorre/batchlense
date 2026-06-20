@@ -51,7 +51,6 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "streamlit" },
-    { name = "torch" },
     { name = "umap-learn" },
 ]
 
@@ -60,6 +59,9 @@ dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
+]
+gpu = [
+    { name = "torch" },
 ]
 
 [package.metadata]
@@ -75,10 +77,10 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.3.0" },
     { name = "scipy", specifier = ">=1.11.0" },
     { name = "streamlit", specifier = ">=1.30" },
-    { name = "torch", specifier = ">=2.0" },
+    { name = "torch", marker = "extra == 'gpu'", specifier = ">=2.0" },
     { name = "umap-learn", specifier = ">=0.5" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["gpu", "dev"]
 
 [[package]]
 name = "blinker"

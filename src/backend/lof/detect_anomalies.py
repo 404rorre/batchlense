@@ -8,8 +8,10 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from backend.helper_modules.dataloader import DataLoader, Normalization
-from backend.lof.local_outlier_factor import LOF
+import pandas as pd
+
+from backend.helper_modules.numpy_normalize import Normalization
+from backend.lof.pipeline import run_lof_on_dataframe
 
 logger = logging.getLogger(__name__)
 
@@ -28,28 +30,28 @@ def run_lof_pipeline(
 
     Threshold = mean(LOF on reference) + threshold_sigma * std(LOF on reference).
     """
-    ref_loader = DataLoader(normalization=normalization)
-    ref_tensor = ref_loader.fit(f_path=reference_path)
+    ref_df = pd.read_csv(reference_path)
+    inp_df = pd.read_csv(input_path)
+    feature_columns = list(inp_df.columns)
+    missing = set(feature_columns) - set(ref_df.columns)
+    if missing:
+        msg = f"Reference CSV missing columns: {sorted(missing)}"
+        raise ValueError(msg)
 
-    lof_calib = LOF(n_neighbors=n_neighbors, threshold=1.5)
-    lof_calib.fit(ref_tensor)
-    calib_scores = lof_calib.lof_scores
-    assert calib_scores is not None
-    threshold = float(calib_scores.mean() + threshold_sigma * calib_scores.std())
+    out_df, threshold, _ = run_lof_on_dataframe(
+        inp_df,
+        feature_columns,
+        reference_df=ref_df[feature_columns],
+        normalization=normalization,
+        n_neighbors=n_neighbors,
+        threshold_sigma=threshold_sigma,
+    )
     logger.info("Calibrated LOF threshold: %s", threshold)
 
-    data = DataLoader(normalization=normalization)
-    data.fit(f_path=input_path)
-    df_anomalies = data.x_csv
-
-    lof = LOF(n_neighbors=n_neighbors, threshold=threshold)
-    lof.fit(data.x)
-    assert lof.lof_scores is not None
-    assert lof.anomaly is not None
-
-    df_anomalies = df_anomalies.copy()
-    df_anomalies["lof-score"] = lof.lof_scores
-    df_anomalies["is_outlier"] = lof.anomaly
+    df_anomalies = out_df.copy()
+    # Historical CLI column name used a hyphen.
+    if "lof_score" in df_anomalies.columns:
+        df_anomalies = df_anomalies.rename(columns={"lof_score": "lof-score"})
 
     detected = df_anomalies.loc[df_anomalies["is_outlier"] == 1]
     logger.info("Detected %s outliers (rows)", len(detected))

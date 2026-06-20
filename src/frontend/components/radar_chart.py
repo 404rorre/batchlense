@@ -6,6 +6,21 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+# Max spokes on the outlier radar (readability on the floor with many tags).
+RADAR_DISPLAY_MAX = 12
+# Match radar and side-by-side z-score grid figure height in Streamlit.
+RADAR_FIGURE_HEIGHT = 500
+
+
+def subset_z_for_features(
+    feature_cols: list[str],
+    z_values: np.ndarray,
+    selected: list[str],
+) -> np.ndarray:
+    """Map full z-score vector (aligned with ``feature_cols``) to ``selected`` order."""
+    z_map = dict(zip(feature_cols, z_values, strict=True))
+    return np.array([z_map[f] for f in selected], dtype=np.float64)
+
 
 def z_scores_for_batch(
     df: pd.DataFrame,
@@ -62,6 +77,6 @@ def make_radar_figure(
         showlegend=True,
         title=title,
         template=template,
-        height=500,
+        height=RADAR_FIGURE_HEIGHT,
     )
     return fig

@@ -11,10 +11,15 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from backend.helper_modules.dataloader import DataLoader, Normalization
-from backend.lof.pipeline import run_lof_on_dataframe
+from backend.helper_modules.numpy_normalize import (
+    Normalization,
+    fit_transform_features_numpy,
+)
+from backend.lof.pipeline import HAS_TORCH, run_lof_on_dataframe
 from frontend.components.batch_comparison import comparison_table, make_delta_bar_figure
 from frontend.components.batch_timeline import (
+    baseline_feature_series,
+    has_in_control_baseline,
     make_production_bar_figure,
     make_timeline_figure,
 )
@@ -25,9 +30,16 @@ from frontend.components.kpi import (
     auto_spec_limits,
     basic_kpis,
     compute_capability,
-    cpk_status,
+    ppk_status,
 )
-from frontend.components.radar_chart import make_radar_figure, z_scores_for_batch
+from frontend.components.radar_chart import (
+    RADAR_DISPLAY_MAX,
+    RADAR_FIGURE_HEIGHT,
+    make_radar_figure,
+    subset_z_for_features,
+    z_scores_for_batch,
+)
+from frontend.components.zscore_grid import make_zscore_grid_figure
 from frontend.tabs.export import render_export_section
 
 
@@ -45,7 +57,9 @@ def _fingerprint(df: pd.DataFrame) -> str:
     return hashlib.sha256(h.tobytes()).hexdigest()
 
 
-def _top_problem_features(scored: pd.DataFrame, feats: list[str]) -> list[tuple[str, float]]:
+def _top_problem_features(
+    scored: pd.DataFrame, feats: list[str]
+) -> list[tuple[str, float]]:
     """Mean |z| vs population among outlier rows only; return top 3 by that score."""
     outs = scored[scored["is_outlier"] == 1]
     if outs.empty:
@@ -184,7 +198,9 @@ def render_results_tab() -> None:
 
     top_prob = _top_problem_features(scored, feats)
     if top_prob:
-        st.caption("Features that deviate most in **flagged** batches (mean |z| vs all data).")
+        st.caption(
+            "Features that deviate most in **flagged** batches (mean |z| vs all data)."
+        )
         cols = st.columns(min(3, len(top_prob)))
         for col, (name, zavg) in zip(cols, top_prob, strict=True):
             with col:
@@ -209,9 +225,17 @@ def render_results_tab() -> None:
     )
     st.session_state["dim_reduction"] = dr_method
 
-    loader = DataLoader(normalization=norm)
-    X_t = loader.fit(data=scored[feats].astype(float).values.tolist())
-    X_np = X_t.detach().cpu().numpy()
+    if HAS_TORCH:
+        from backend.helper_modules.dataloader import DataLoader
+
+        loader = DataLoader(normalization=norm)
+        X_t = loader.fit(data=scored[feats].astype(float).values.tolist())
+        X_np = X_t.detach().cpu().numpy()
+    else:
+        X_np = fit_transform_features_numpy(
+            scored[feats].astype(float).values,
+            norm,
+        )
     coords, dr_warns = project_2d(X_np, cast(Method, dr_method))
     for w in dr_warns:
         st.caption(w)
@@ -262,7 +286,7 @@ def render_results_tab() -> None:
         cap = compute_capability(scored, feats, eff_spec)
     else:
         show_auto_cap = st.toggle(
-            "Show **Cp / Cpk / Pp / Ppk** using auto limits (mean ± 3σ)",
+            "Show **Pp / Ppk** using auto limits (mean ± 3σ)",
             value=False,
             key="cap_show_auto_only",
         )
@@ -271,15 +295,19 @@ def render_results_tab() -> None:
             cap = compute_capability(scored, feats, eff_spec)
 
     if cap is not None and not cap.empty:
-        st.subheader("Process capability (Cp / Cpk)")
-        st.caption("Uses overall variation; compare to your internal SPC rules.")
+        st.subheader("Process capability (Pp / Ppk)")
+        st.caption(
+            "Uses **overall** sample σ — equivalent to Cp/Cpk when no within-subgroup "
+            "estimate is available. Ppk >= 1.33 is generally considered capable."
+        )
         disp = cap.copy()
-        disp["status"] = disp["cpk"].apply(cpk_status)
+        disp["status"] = disp["ppk"].apply(ppk_status)
         st.dataframe(disp, width="stretch")
 
     st.subheader("Correlation between parameters")
     st.caption(
-        "Strong color = parameters move together (or opposite). "
+        "**Spearman (rank) correlation:** strong color = parameters tend to move "
+        "together or opposite (order-based; robust to outliers vs linear Pearson). "
         "Blocks show groups that tend to change as a group.",
     )
     fig_corr = make_correlation_heatmap_figure(scored, feats, template=tpl)
@@ -292,11 +320,72 @@ def render_results_tab() -> None:
         pick = st.selectbox("Pick an outlier batch", options=labels, key="radar_pick")
         mask = scored[batch_col].astype(str) == pick
         _, z_b = z_scores_for_batch(scored, feats, mask)
-        z_ref = np.zeros(len(feats))
-        fig_r = make_radar_figure(
-            feats, z_ref, z_b, template=tpl, title=f"Batch {pick} vs average"
+        z_b_arr = np.asarray(z_b, dtype=np.float64)
+        k_default = min(RADAR_DISPLAY_MAX, len(feats))
+        z_map = dict(zip(feats, z_b_arr, strict=True))
+        default_sel = sorted(feats, key=lambda f: abs(z_map[f]), reverse=True)[
+            :k_default
+        ]
+
+        if st.session_state.get("_radar_sync_pick") != pick:
+            st.session_state["_radar_sync_pick"] = pick
+            st.session_state["radar_metrics_sel"] = default_sel
+
+        st.caption(
+            "Defaults highlight the largest deviations vs the population average. "
+            f"Add or remove metrics (max {RADAR_DISPLAY_MAX}) for a readable chart—"
+            "useful to see one extreme vs several moderate drifts at a glance."
         )
-        st.plotly_chart(fig_r, width="stretch")
+        st.multiselect(
+            "Metrics on radar",
+            options=sorted(feats),
+            key="radar_metrics_sel",
+            max_selections=RADAR_DISPLAY_MAX,
+            help=(
+                "Choose which parameters appear as spokes. Selection resets when you "
+                "pick a different outlier batch."
+            ),
+        )
+        selected = list(st.session_state.get("radar_metrics_sel") or [])
+        if not selected:
+            st.warning(
+                "Select at least one metric; showing default deviation highlights.",
+            )
+            selected = default_sel
+
+        z_sub = subset_z_for_features(feats, z_b_arr, selected)
+        z_ref = np.zeros(len(selected))
+        alpha_feats = sorted(feats)
+        z_alpha = subset_z_for_features(feats, z_b_arr, alpha_feats)
+        medians = scored[feats].astype(float).median()
+        batch_row = scored.loc[mask, feats].astype(float).mean()
+        batch_alpha = np.array([float(batch_row[f]) for f in alpha_feats])
+        med_alpha = np.array([float(medians[f]) for f in alpha_feats])
+        fig_r = make_radar_figure(
+            selected,
+            z_ref,
+            z_sub,
+            template=tpl,
+            title=f"Batch {pick} vs average ({len(selected)} metrics)",
+        )
+        fig_zgrid = make_zscore_grid_figure(
+            alpha_feats,
+            z_alpha,
+            batch_alpha,
+            med_alpha,
+            template=tpl,
+            height=RADAR_FIGURE_HEIGHT,
+        )
+
+        col_radar, col_grid = st.columns([3, 2])
+        with col_radar:
+            st.plotly_chart(fig_r, width="stretch")
+        with col_grid:
+            st.plotly_chart(fig_zgrid, width="stretch")
+            st.caption(
+                "All metrics (A–Z): tile color = z-score vs population "
+                "(same scale as radar, ±3). Hover for name, batch value, median."
+            )
     else:
         st.caption(
             "Run analysis and flag outliers to see a radar chart for a specific batch."
@@ -314,40 +403,54 @@ def render_results_tab() -> None:
         )
         tf = st.selectbox("Feature for timeline", options=feats, key="tl_feat")
 
-        spec_uploaded = st.session_state.get("df_spec")
-        eff_spec_tl: pd.DataFrame | None = None
-        if spec_uploaded is not None and not spec_uploaded.empty:
-            use_auto_spec_tl = st.toggle(
-                "Use **auto** USL/LSL (mean +/- 3 sigma) instead of uploaded spec",
-                value=False,
-                key="tl_spec_use_auto",
-            )
-            eff_spec_tl = auto_spec_limits(scored, feats) if use_auto_spec_tl else spec_uploaded
-        else:
-            show_auto_spec_tl = st.toggle(
-                "Show **USL/LSL** (auto: mean +/- 3 sigma)",
-                value=False,
-                key="tl_spec_show_auto_only",
-            )
-            eff_spec_tl = auto_spec_limits(scored, feats) if show_auto_spec_tl else None
+        if res == "hour":
+            spec_uploaded = st.session_state.get("df_spec")
+            usl_v, lsl_v = _lookup_spec_limits(spec_uploaded, tf)
 
-        usl_v, lsl_v = _lookup_spec_limits(eff_spec_tl, tf)
-
-        xs_tl = scored[tf].astype(float).replace([np.inf, -np.inf], np.nan).dropna()
-        if len(xs_tl) == 0:
-            ucl_v = lcl_v = None
-        else:
-            m_tl = float(xs_tl.mean())
-            sig_tl = float(xs_tl.std(ddof=1)) if len(xs_tl) > 1 else 0.0
-            if not (np.isfinite(m_tl) and np.isfinite(sig_tl)):
-                ucl_v = lcl_v = None
+            xs_tl = baseline_feature_series(
+                scored,
+                datetime_col=dt_col,
+                feature=tf,
+                in_control_only=True,
+            )
+            if len(xs_tl) == 0:
+                xs_tl = baseline_feature_series(
+                    scored,
+                    datetime_col=dt_col,
+                    feature=tf,
+                    in_control_only=False,
+                )
+            if len(xs_tl) == 0:
+                ucl_v = lcl_v = uwl_v = lwl_v = None
             else:
-                ucl_v, lcl_v = m_tl + 2.0 * sig_tl, m_tl - 2.0 * sig_tl
+                m_tl = float(xs_tl.mean())
+                sig_tl = float(xs_tl.std(ddof=1)) if len(xs_tl) > 1 else 0.0
+                if not (np.isfinite(m_tl) and np.isfinite(sig_tl)):
+                    ucl_v = lcl_v = uwl_v = lwl_v = None
+                else:
+                    ucl_v, lcl_v = m_tl + 3.0 * sig_tl, m_tl - 3.0 * sig_tl
+                    uwl_v, lwl_v = m_tl + 2.0 * sig_tl, m_tl - 2.0 * sig_tl
 
-        st.caption(
-            "Reference lines: **UCL/LCL** = Upper/Lower Control Limit (mean +/- 2 sigma); "
-            "**USL/LSL** = Upper/Lower Specification Limit (tolerance)."
-        )
+            st.caption(
+                "Hourly SPC: **OEG/UCL**, **UEG/LCL** = control limits "
+                "(mean +/- 3 sigma, red **thick** dash); **OWG/UWL**, **UWG/LWL** = warning limits "
+                "(mean +/- 2 sigma, red **thin** dash); **x̄** = process mean of non-flagged batches "
+                "(green solid). **USL/LSL** (blue solid) shown only when a spec-limits file is uploaded."
+            )
+        else:
+            ucl_v = lcl_v = uwl_v = lwl_v = usl_v = lsl_v = None
+            st.caption(
+                "**x̄** (process mean of non-flagged batches, green) is always shown. "
+                "Red control/warning limits and blue USL/LSL appear only for **hour** — "
+                "daily/monthly bucket means would not match row-level sigma."
+            )
+
+        if not has_in_control_baseline(scored, datetime_col=dt_col, feature=tf):
+            st.warning(
+                "Every batch is flagged as an outlier — process mean (x̄) is hidden. "
+                "Bucket points still show overall movement including flagged batches."
+            )
+
         fig_tl = make_timeline_figure(
             scored,
             datetime_col=dt_col,
@@ -357,6 +460,8 @@ def render_results_tab() -> None:
             template=tpl,
             ucl=ucl_v,
             lcl=lcl_v,
+            uwl=uwl_v,
+            lwl=lwl_v,
             usl=usl_v,
             lsl=lsl_v,
         )

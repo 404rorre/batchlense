@@ -1,4 +1,4 @@
-"""Clustered Pearson correlation heatmap for Plotly."""
+"""Clustered Spearman rank correlation heatmap for Plotly."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from scipy.spatial.distance import squareform
 
 
 def correlation_matrix(df: pd.DataFrame, feature_cols: list[str]) -> pd.DataFrame:
-    """Pearson correlation of numeric feature columns."""
-    return df[feature_cols].astype(float).corr(method="pearson")
+    """Spearman rank correlation of numeric feature columns (monotonic association)."""
+    return df[feature_cols].astype(float).corr(method="spearman")
 
 
 def clustered_order(corr: pd.DataFrame) -> list[str]:
@@ -67,12 +67,12 @@ def make_correlation_heatmap_figure(
             ],
             zmin=-1,
             zmax=1,
-            colorbar=dict(title="r"),
-            hovertemplate="%{x} vs %{y}<br>r=%{z:.3f}<extra></extra>",
+            colorbar=dict(title="Spearman ρ"),
+            hovertemplate="%{x} vs %{y}<br>ρ=%{z:.3f}<extra></extra>",
         ),
     )
     fig.update_layout(
-        title="Feature correlations (clustered)",
+        title="Feature correlations (Spearman, clustered)",
         template=template,
         xaxis={"side": "bottom", "tickangle": -45},
         yaxis={"autorange": "reversed"},

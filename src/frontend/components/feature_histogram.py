@@ -26,6 +26,7 @@ def make_feature_histogram_figure(
     counts, edges = np.histogram(x, bins=n_bins)
     centers = (edges[:-1] + edges[1:]) / 2
     widths = edges[1:] - edges[:-1]
+    bin_edges = np.column_stack([edges[:-1], edges[1:]])
 
     fig = go.Figure()
     fig.add_trace(
@@ -35,6 +36,12 @@ def make_feature_histogram_figure(
             width=widths * 0.95,
             name="Count",
             marker_color="rgba(100,100,120,0.6)",
+            customdata=bin_edges,
+            hovertemplate=(
+                "low: %{customdata[0]:.6g}<br>"
+                "high: %{customdata[1]:.6g}<br>"
+                "count: %{y}<extra></extra>"
+            ),
         ),
     )
 

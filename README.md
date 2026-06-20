@@ -1,99 +1,62 @@
-# batchlense
+# Batchlense
 
-A lightweight tool for production and quality teams to detect anomalies in batch telemetry data. Upload batch exports and **batchlense** flags which batches deviate from historical baselines across process parameters (temperature, pressure, rotation, grind force, or any numeric metrics).
+**Detect batch anomalies before they become recalls.**
 
-Built for teams who need answers fast, without a data science background.
+Batchlense is a small quality-analytics app for manufacturing and process teams: upload batch-level CSVs, score every row with **Local Outlier Factor (LOF)** against a reference baseline, and explore results with control-style charts, **Pp/Ppk**, 2D projections (PCA / t-SNE / UMAP), and PDF export.
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://batchlense.streamlit.app)
+
+> Replace the demo URL above after you deploy your own fork.
+
+![Dashboard demo](docs/demo.png)
+
+*Add `docs/demo.png` after your first deploy so this image renders.*
 
 ---
 
-## What it does
+## Why it exists
 
-- **Web UI (Streamlit):** On first open you land in **demo mode** with synthetic chemical batch data (one week of timestamps, injected outliers) and LOF already run. Use **Feed your own data** to switch to the full flow: upload CSV, configure features and LOF, explore PCA / t-SNE / UMAP maps, KPIs, correlation heatmaps, radar and distribution views, optional Cpk/Ppk from a spec-limits file, then export scored CSV and a PDF summary.
-- **CLI:** Score batches from the command line using the same LOF pipeline.
+Production data often arrives as **one row per batch** with tens of numeric parameters. Spotting a bad batch in a spreadsheet is slow and inconsistent. Batchlense turns that into a repeatable workflow: **calibrate** what “normal” looks like, **score** new batches the same way every time, and **see** which features drove a flag—without asking analysts to run notebooks or maintain ML infra.
 
 ---
 
-## Run the Streamlit app locally
+## Features
 
-**Requirements:** Python 3.11+
+- **Demo mode** — synthetic chemical-style batches with injected outliers on first load  
+- **LOF anomaly detection** — reference-calibrated threshold; sklearn backend by default, optional PyTorch path  
+- **SPC-style views** — timelines, batch comparison vs median, radar (z-scores)  
+- **Process capability** — **Pp / Ppk** from optional spec file (`feature`, `usl`, `lsl`)  
+- **2D maps** — PCA, t-SNE, UMAP for structure at a glance  
+- **Exports** — scored CSV and PDF summary (Plotly + Kaleido)
+
+---
+
+## Quick start
 
 ```bash
-git clone https://github.com/404rorre/batchlens.git   # or your fork
-cd batchlense   # use your clone directory name
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+git clone <your-repo-url> && cd batchlense
+python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e .
 batchlense
 ```
 
-This starts Streamlit on **127.0.0.1:8501** (IPv4 loopback only — not reachable from other machines). Open <http://127.0.0.1:8501> or <http://localhost:8501>.
-
-On some systems, `localhost` makes Streamlit listen on `[::]:8501` (all interfaces). This project defaults to **127.0.0.1** via the `batchlense` launcher and [`.streamlit/config.toml`](.streamlit/config.toml) when you run from the repo root.
-
-To listen on all interfaces (e.g. share on your LAN):
-
-```bash
-batchlense --host 0.0.0.0 --port 8501
-```
-
-You can also run Streamlit directly (from the **repository root** so `.streamlit/config.toml` applies). Prefer **`python -m streamlit`** so zsh’s spell-checker does not prompt to “correct” `streamlit` to `.streamlit` (the config folder):
-
-```bash
-python -m streamlit run src/frontend/app.py --server.address 127.0.0.1 --server.port 8501
-```
-
-If you run without installing the package, add `src` to `PYTHONPATH`:
-
-```bash
-PYTHONPATH=src python -m streamlit run src/frontend/app.py --server.address 127.0.0.1
-```
-
-Optional **reference CSV** and **spec limits** (`feature`, `usl`, `lsl`) uploaders are described in the app. A sample template is available from the Upload tab (`batch_number`, `production_date`, plus numeric columns).
-
-**PDF report charts:** Dependencies pin **`kaleido==0.2.1`** so Plotly can export PNGs without Chrome. Newer **0.2.1.post1** lacks manylinux **x86_64** wheels (common **`uv`** failure); **1.x** needs Chrome or **`plotly_get_chrome`**.
-
-**`ModuleNotFoundError: No module named 'torch'`:** Dependencies are installed into **one** environment (e.g. `.venv`), but Streamlit was started with **another** Python (e.g. pyenv global). Fix: **activate the same venv** you used for `pip install` / `uv pip install`, then start the app:
-
-```bash
-source .venv/bin/activate   # must be this shell before streamlit
-python -c "import torch; print(torch.__file__)"   # should point under .venv
-python -m streamlit run src/frontend/app.py --server.address 127.0.0.1
-```
-
-With **uv**, you can avoid activation mistakes:
-
-```bash
-uv pip install -e ".[dev]"
-uv run python -m streamlit run src/frontend/app.py --server.address 127.0.0.1 --server.port 8501
-```
-
----
-
-## CLI usage
-
-After `pip install -e .`:
-
-```bash
-batchlense-lof --help
-```
-
-Configure input/reference batch CSV paths and LOF options as documented by `--help`.
-
----
-
-## Screenshots
-
-> Demo and screenshots coming soon.
+Open <http://127.0.0.1:8501>. Optional GPU stack: `pip install -e ".[gpu]"` (installs PyTorch for the legacy tensor LOF path).
 
 ---
 
 ## Tech stack
 
-- Python, Pandas, NumPy  
-- PyTorch (normalization / tensor path in `DataLoader` + `LOF`)  
-- scikit-learn (LOF internals)  
-- Streamlit, Plotly, UMAP  
-- fpdf2 + Kaleido (PDF + static chart export)
+Python **3.11+**, Pandas, NumPy, **scikit-learn** (LOF + projections), Streamlit, Plotly, SciPy, UMAP, fpdf2, Kaleido. **PyTorch is optional** (`[gpu]` extra): the app and CLI use sklearn LOF and NumPy normalization when torch is not installed (e.g. Streamlit Cloud).
+
+---
+
+## How it works
+
+1. **Upload** batch CSV (and optionally a clean **reference** CSV plus **spec limits**).  
+2. **Configure** numeric feature columns and LOF settings (`k`, normalization, threshold σ).  
+3. **Normalize** features (z-score, min–max, or none) using **reference** statistics when a reference set is provided.  
+4. **Score** each input row with LOF; rows above the calibrated threshold are **flagged**.  
+5. **Explore** KPIs, charts, correlation heatmaps, and exports.
 
 ---
 
@@ -101,8 +64,24 @@ Configure input/reference batch CSV paths and LOF options as documented by `--he
 
 ```bash
 pip install -e ".[dev]"
-ruff check src tests
-ruff format src tests
+ruff check src tests && ruff format src tests
 mypy
 pytest
 ```
+
+---
+
+## Troubleshooting
+
+<details>
+<summary><strong>Expand</strong> — Kaleido, optional torch, zsh, LAN binding</summary>
+
+**PDF / static charts:** This repo pins **`kaleido==0.2.1`** so Plotly can render PNGs without Chrome. Newer **`0.2.1.post1`** often lacks manylinux **x86_64** wheels (common **`uv`** failure). Kaleido **1.x** needs Chrome or `plotly_get_chrome`.
+
+**Optional PyTorch:** Core installs do not include torch. If you want the original tensor LOF path, use `pip install -e ".[gpu]"`. If you see `ModuleNotFoundError: torch`, either install the extra or ignore it—sklearn LOF runs without it. If torch *is* installed but import fails, confirm you’re using the same venv you installed into (`python -c "import torch; print(torch.__file__)"`).
+
+**zsh:** Prefer `python -m streamlit run src/frontend/app.py` so zsh doesn’t “correct” `streamlit` to `.streamlit`.
+
+**Listen on LAN:** `batchlense --host 0.0.0.0 --port 8501` (default is loopback-only via launcher + `.streamlit/config.toml`).
+
+</details>

@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Streamlit runs this file with only src/frontend on sys.path; package imports need src/.
+_src_root = str(Path(__file__).resolve().parents[1])
+if _src_root not in sys.path:
+    sys.path.insert(0, _src_root)
+
 import io
 
 import pandas as pd

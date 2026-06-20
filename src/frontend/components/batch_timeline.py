@@ -2,14 +2,58 @@
 
 from __future__ import annotations
 
+import math
 from typing import Literal
 
-import math
-
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
 Resample = Literal["month", "day", "hour"]
+
+
+def baseline_feature_series(
+    df: pd.DataFrame,
+    *,
+    datetime_col: str,
+    feature: str,
+    outlier_col: str = "is_outlier",
+    in_control_only: bool = True,
+) -> pd.Series:
+    """Feature values with valid timestamps; optionally exclude flagged outliers."""
+    d = df.copy()
+    d["_ts"] = pd.to_datetime(d[datetime_col], errors="coerce")
+    d = d.dropna(subset=["_ts"]).sort_values("_ts")
+    if in_control_only and outlier_col in d.columns:
+        d = d[d[outlier_col] != 1]
+    return (
+        d[feature]
+        .astype(float)
+        .replace([np.inf, -np.inf], np.nan)
+        .dropna()
+    )
+
+
+def has_in_control_baseline(
+    df: pd.DataFrame,
+    *,
+    datetime_col: str,
+    feature: str,
+    outlier_col: str = "is_outlier",
+) -> bool:
+    """True when at least one non-flagged row has a finite feature value."""
+    return (
+        len(
+            baseline_feature_series(
+                df,
+                datetime_col=datetime_col,
+                feature=feature,
+                outlier_col=outlier_col,
+                in_control_only=True,
+            ),
+        )
+        > 0
+    )
 
 
 def make_timeline_figure(
@@ -23,6 +67,8 @@ def make_timeline_figure(
     template: str = "plotly_white",
     ucl: float | None = None,
     lcl: float | None = None,
+    uwl: float | None = None,
+    lwl: float | None = None,
     usl: float | None = None,
     lsl: float | None = None,
 ) -> go.Figure:
@@ -58,7 +104,14 @@ def make_timeline_figure(
 
     colors = ["#FF8C00" if o else "#D3D3D3" for o in out_flags]
 
-    median_val = float(d[feature].astype(float).median())
+    baseline = baseline_feature_series(
+        d,
+        datetime_col="_ts",
+        feature=feature,
+        outlier_col=outlier_col,
+        in_control_only=True,
+    )
+    xbar_val = float(baseline.mean()) if len(baseline) > 0 else float("nan")
 
     fig = go.Figure()
     fig.add_trace(
@@ -72,34 +125,58 @@ def make_timeline_figure(
             hovertemplate="%{text}<extra></extra>",
         ),
     )
-    fig.add_hline(
-        y=median_val,
-        line_dash="dash",
-        line_color="gray",
-        annotation_text=f"median {median_val:.2f}",
-        annotation_position="right",
-    )
-    if ucl is not None and math.isfinite(ucl):
-        fig.add_hline(
-            y=ucl,
-            line_dash="dash",
-            line_color="#E67E22",
-            annotation_text=f"UCL {ucl:.3f}",
-            annotation_position="right",
-        )
+    _red = "#C62828"
     if lcl is not None and math.isfinite(lcl):
         fig.add_hline(
             y=lcl,
             line_dash="dash",
-            line_color="#E67E22",
-            annotation_text=f"LCL {lcl:.3f}",
+            line_color=_red,
+            line_width=4,
+            annotation_text=f"LCL (UEG) {lcl:.3f}",
+            annotation_position="right",
+        )
+    if lwl is not None and math.isfinite(lwl):
+        fig.add_hline(
+            y=lwl,
+            line_dash="dash",
+            line_color=_red,
+            line_width=1,
+            annotation_text=f"LWL (UWG) {lwl:.3f}",
+            annotation_position="right",
+        )
+    if math.isfinite(xbar_val):
+        fig.add_hline(
+            y=xbar_val,
+            line_dash="solid",
+            line_color="#2E7D32",
+            line_width=2,
+            annotation_text=f"x\u0304 {xbar_val:.3f}",
+            annotation_position="right",
+        )
+    if uwl is not None and math.isfinite(uwl):
+        fig.add_hline(
+            y=uwl,
+            line_dash="dash",
+            line_color=_red,
+            line_width=1,
+            annotation_text=f"UWL (OWG) {uwl:.3f}",
+            annotation_position="right",
+        )
+    if ucl is not None and math.isfinite(ucl):
+        fig.add_hline(
+            y=ucl,
+            line_dash="dash",
+            line_color=_red,
+            line_width=4,
+            annotation_text=f"UCL (OEG) {ucl:.3f}",
             annotation_position="right",
         )
     if usl is not None and math.isfinite(usl):
         fig.add_hline(
             y=usl,
             line_dash="solid",
-            line_color="#C0392B",
+            line_color="#1565C0",
+            line_width=2,
             annotation_text=f"USL {usl:.3f}",
             annotation_position="right",
         )
@@ -107,7 +184,8 @@ def make_timeline_figure(
         fig.add_hline(
             y=lsl,
             line_dash="solid",
-            line_color="#C0392B",
+            line_color="#1565C0",
+            line_width=2,
             annotation_text=f"LSL {lsl:.3f}",
             annotation_position="right",
         )

@@ -1,4 +1,4 @@
-"""Production-style KPIs and optional process capability (Cp/Cpk)."""
+"""Production-style KPIs and optional process capability (Pp/Ppk)."""
 
 from __future__ import annotations
 
@@ -73,7 +73,10 @@ def compute_capability(
     spec_df: pd.DataFrame,
 ) -> pd.DataFrame | None:
     """
-    Compute Cp, Cpk, Pp, Ppk per feature using overall sample std (Ppk-style).
+    Compute Pp and Ppk per feature using overall sample std.
+
+    Without within-subgroup variation (R-bar/d2) Cp/Cpk cannot be
+    distinguished from Pp/Ppk, so we report only the overall indices.
 
     ``spec_df`` columns: feature (or Feature), usl, lsl (case-insensitive).
     """
@@ -100,8 +103,6 @@ def compute_capability(
             rows.append(
                 {
                     "feature": feat,
-                    "cp": np.nan,
-                    "cpk": np.nan,
                     "pp": np.nan,
                     "ppk": np.nan,
                     "mean": mean,
@@ -109,17 +110,15 @@ def compute_capability(
                 },
             )
             continue
-        cp = (usl - lsl) / (6 * sigma)
-        cpu = (usl - mean) / (3 * sigma)
-        cpl = (mean - lsl) / (3 * sigma)
-        cpk = float(min(cpu, cpl))
+        pp = (usl - lsl) / (6 * sigma)
+        ppu = (usl - mean) / (3 * sigma)
+        ppl = (mean - lsl) / (3 * sigma)
+        ppk = float(min(ppu, ppl))
         rows.append(
             {
                 "feature": feat,
-                "cp": float(cp),
-                "cpk": cpk,
-                "pp": float(cp),
-                "ppk": cpk,
+                "pp": float(pp),
+                "ppk": ppk,
                 "mean": mean,
                 "sigma": sigma,
             },
@@ -128,11 +127,11 @@ def compute_capability(
     return pd.DataFrame(rows) if rows else None
 
 
-def cpk_status(cpk: float) -> str:
-    if np.isnan(cpk):
+def ppk_status(ppk: float) -> str:
+    if np.isnan(ppk):
         return "unknown"
-    if cpk >= 1.33:
+    if ppk >= 1.33:
         return "good"
-    if cpk >= 1.0:
+    if ppk >= 1.0:
         return "marginal"
     return "poor"

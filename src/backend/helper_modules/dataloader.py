@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
 import torch
 from torch import Tensor, tensor
 
+from backend.helper_modules.numpy_normalize import Normalization
+
 from .tools import timer_func
 
 logger = logging.getLogger(__name__)
-
-Normalization = Literal["minmax", "zscore", "none", ""]
 
 
 class DataLoader:
@@ -137,16 +137,30 @@ class DataLoader:
 
         logger.debug("Data shape: %s (n=%s)", self.x.shape, self.x.shape[0])
 
+    def transform(self, data: list[Any]) -> Tensor:
+        """Normalize ``data`` using parameters stored during the last ``fit``."""
+        x = tensor(data).float()
+        if self.normalization == "minmax":
+            denom = self._fit_max - self._fit_min
+            denom = torch.where(denom == 0, torch.ones_like(denom), denom)
+            return (x - self._fit_min) / denom
+        if self.normalization == "zscore":
+            return (x - self._fit_mean) / (self._fit_std + 1e-10)
+        return x
+
     def _norm_minmax(self) -> None:
         """Scale each feature to [0, 1]."""
-        x_min = self.x.min(dim=0).values
-        x_max = self.x.max(dim=0).values
-        denom = x_max - x_min
+        self._fit_min = self.x.min(dim=0).values
+        self._fit_max = self.x.max(dim=0).values
+        denom = self._fit_max - self._fit_min
         denom = torch.where(denom == 0, torch.ones_like(denom), denom)
-        self.x = (self.x - x_min) / (denom + 1e-10)
+        self.x = (self.x - self._fit_min) / denom
 
     def _norm_z(self) -> None:
         """Z-score each feature (mean 0, std 1)."""
-        std = self.x.std(dim=0)
-        std = torch.where(std == 0, torch.ones_like(std), std)
-        self.x = (self.x - self.x.mean(dim=0)) / (std + 1e-10)
+        self._fit_mean = self.x.mean(dim=0)
+        self._fit_std = self.x.std(dim=0)
+        self._fit_std = torch.where(
+            self._fit_std == 0, torch.ones_like(self._fit_std), self._fit_std
+        )
+        self.x = (self.x - self._fit_mean) / (self._fit_std + 1e-10)
